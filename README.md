@@ -21,7 +21,7 @@ Este proyecto utiliza la inteligencia artificial FRIDA junto con OpenVINO para m
 
 1.	Clona el repositorio:
    
-   `git clone https://github.com/usuario/monitoreo-conductores.git`
+   `git clone https://github.com/janc18/ia-driver-log`
    
 2. Navega al directorio del proyecto:
 
