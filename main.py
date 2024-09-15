@@ -142,25 +142,38 @@ while True:
 
     if time.time() - last_post_time >= 20:
         last_post_time = time.time()
-        
+
         # Obtener la fecha y la hora actuales
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-        
+
+        # Datos que se enviarán en el POST
+        post_data = {
+            "inputs": f"escribe un resumen de 150 palabras de diagnostico sobre un conductor en carretera segun el estado de animo '{prediccion}' y los pts de distraccion en 30 segundos ('{eye_closure_count}'). Agrega la velocidad a la que iba ('{velocidad:.2f}') en el lugar ('{hostname}'), Ademas, has una muestra de que datos guardarias en una base de datos en mongo con la informacion dada.",
+            "parameters": {"max_new_tokens": 250}
+        }
+
         # Hacer el POST con los datos requeridos
         try:
             response = requests.post(
                 url="https://fridaplatform.com/generate",
-                json={
-                    "inputs": f"escribe un resumen de 150 palabras de diagnostico sobre un conductor en carretera segun el estado de animo '{prediccion}' y los pts de distraccion en 30 segundos ('{eye_closure_count}'). Agrega la velocidad a la que iba ('{velocidad:.2f}') en el lugar ('{hostname}'), Ademas, has una muestra de que datos guardarias en una base de datos en mongo con la informacion dada.",
-                    "parameters": {"max_new_tokens": 250}
-                }
+                json=post_data
             )
-            # Registrar el POST con la fecha y la hora
-            print(f"{timestamp}: POST realizado con éxito, respuesta:", response.json())
+# Obtener respuesta del servidor en formato legible
+            server_response = response.json()
+
+            # --- Guardar solo la respuesta del servidor y el timestamp ---
+            with open("registro_respuestas.txt", "a") as file:
+                file.write(f"{timestamp}: {server_response}\n")
+
+            # Imprimir la respuesta en la consola (opcional)
+            print(f"{timestamp}: POST realizado con éxito, respuesta:", server_response)
+
         except Exception as e:
-            # Registrar el POST con la fecha y la hora en caso de error
+            # Registrar el error en el archivo de texto
             print(f"{timestamp}: Error en el POST: {e}")
+            with open("registro_respuestas.txt", "a") as file:
+                file.write(f"{timestamp}: Error en el POST: {e}\n")
 
     # Romper el loop si se presiona la tecla 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
