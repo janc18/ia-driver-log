@@ -31,6 +31,8 @@ Este proyecto utiliza la inteligencia artificial FRIDA junto con OpenVINO para m
 
     `pip install -r requirements.txt`
 
+---
+![alt text](Captura.png)
 
 
 
