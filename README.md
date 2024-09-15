@@ -23,14 +23,12 @@ Este proyecto utiliza la inteligencia artificial FRIDA junto con OpenVINO para m
    
    `git clone https://github.com/janc18/ia-driver-log`
    
-2. Navega al directorio del proyecto:
-
-   `cd main.py`
-
-3.  Instala las dependencias:
+2.  Instala las dependencias:
 
     `pip install -r requirements.txt`
 
+3. Ejecuta el programa
+    `python3 main.py`
 ---
 ![alt text](Captura.png)
 
