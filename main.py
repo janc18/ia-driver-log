@@ -5,6 +5,7 @@ import numpy as np
 import openvino as ov
 import socket
 import requests
+from datetime import datetime
 import random
 
 # Fetch `notebook_utils` module
@@ -62,15 +63,22 @@ velocidad = random.uniform(10, 100)  # Inicializamos la velocidad
 last_speed_update_time = time.time()  # Guardamos el tiempo de la última actualización
 update_interval = 1  # Intervalo de actualización en segundos
 
+
+last_post_time = time.time()
+
+# Obtener información del dispositivo
+hostname = socket.gethostname()
+ip_address = socket.gethostbyname(hostname)
+
 # --- Captura de video en tiempo real desde la cámara ---
-cap = cv2.VideoCapture("./video.mp4")  # Usamos un archivo de video o la cámara (cambiar a 0 para cámara)
+cap = cv2.VideoCapture("./video.mp4")  # Usamos la cámara (dispositivo 0)
 
 if not cap.isOpened():
-    print("No se pudo abrir la cámara o el archivo de video")
+    print("No se pudo abrir la cámara")
     exit()
 
 while True:
-    # Leer un frame de la cámara o video
+    # Leer un frame de la cámara
     ret, frame = cap.read()
     if not ret:
         print("No se pudo capturar la imagen")
@@ -101,30 +109,58 @@ while True:
             for (ex, ey, ew, eh) in eyes:
                 cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (0, 255, 0), 2)
 
+        # Preprocesar el rostro para el modelo de detección de emociones
+        face_blob = cv2.resize(roi_color, (64, 64))  # Ajusta al tamaño que necesita el modelo
+        face_blob = np.transpose(face_blob, (2, 0, 1))  # Cambia a formato de canales
+        face_blob = np.expand_dims(face_blob, 0)  # Añadir dimensión batch
+        face_blob = face_blob.astype(np.float32)
+
+        # Obtener la predicción de la emoción
+        result = compiled_model([face_blob])[output_layer]
+        emotion_index = np.argmax(result)
+        prediccion = emotions[emotion_index]  # Actualizar la predicción de emoción
+
     # Si no se detectan ojos y un rostro está presente, sumamos al contador
     if len(faces) > 0 and eyes_detected == 0:
         eye_closure_count += 1
 
-    # Verificar si ha pasado suficiente tiempo para actualizar la velocidad
+        # Verificar si ha pasado suficiente tiempo para actualizar la velocidad
     current_time = time.time()
     if current_time - last_speed_update_time >= update_interval:
-        velocidad = random.uniform(90, 100)  # Actualizar la velocidad aleatoria
+        velocidad = random.uniform(90, 95)  # Actualizar la velocidad aleatoria
         last_speed_update_time = current_time  # Actualizar el tiempo de la última actualización
 
     # Mostrar el flujo de video en una ventana
-
     cv2.putText(frame, f"Velocidad: {velocidad:.2f} km/h", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
-
-    # Mostrar la predicción de emoción
     cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2, cv2.LINE_AA)
-
     cv2.putText(frame, f"Distraccion: {eye_closure_count}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
-
     # Mostrar información del dispositivo
     cv2.putText(frame, f"Dispositivo: {hostname} ({ip_address})", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
     # Mostrar el flujo de video con la predicción y la información del dispositivo superpuestos
     cv2.imshow('Camara en vivo - Emocion detectada', frame)
+
+    if time.time() - last_post_time >= 20:
+        last_post_time = time.time()
+        
+        # Obtener la fecha y la hora actuales
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Hacer el POST con los datos requeridos
+        try:
+            response = requests.post(
+                url="https://fridaplatform.com/generate",
+                json={
+                    "inputs": f"escribe un resumen de 150 palabras de diagnostico sobre un conductor en carretera segun el estado de animo '{prediccion}' y los pts de distraccion en 30 segundos ('{eye_closure_count}'). Agrega la velocidad a la que iba ('{velocidad:.2f}') en el lugar ('{hostname}'), Ademas, has una muestra de que datos guardarias en una base de datos en mongo con la informacion dada.",
+                    "parameters": {"max_new_tokens": 250}
+                }
+            )
+            # Registrar el POST con la fecha y la hora
+            print(f"{timestamp}: POST realizado con éxito, respuesta:", response.json())
+        except Exception as e:
+            # Registrar el POST con la fecha y la hora en caso de error
+            print(f"{timestamp}: Error en el POST: {e}")
 
     # Romper el loop si se presiona la tecla 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
