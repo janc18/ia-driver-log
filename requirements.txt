@@ -1,0 +1,8 @@
+opencv-python
+numpy
+openvino
+requests
+ipython
+tqdm
+jupyter
+ipywidgets
