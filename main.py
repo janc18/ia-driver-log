@@ -1,7 +1,6 @@
 import time
 from pathlib import Path
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import openvino as ov
 
@@ -69,7 +68,13 @@ while True:
         # Preprocesar la imagen capturada
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         input_image = cv2.resize(src=gray_frame, dsize=(64, 64))  # Tamaño requerido por el modelo de emociones
-        input_image = input_image.reshape(1, 1, 64, 64)  # La forma esperada es 1x1x64x64
+        
+        # Repetimos el canal para que sea de 3 canales (RGB falso)
+        input_image = np.stack([input_image] * 3, axis=-1)  # Forma (64, 64, 3)
+        
+        # Cambiamos la forma a la que espera el modelo: (1, 3, 64, 64)
+        input_image = np.transpose(input_image, (2, 0, 1))  # De (64, 64, 3) a (3, 64, 64)
+        input_image = np.expand_dims(input_image, 0)  # De (3, 64, 64) a (1, 3, 64, 64)
         input_image = input_image.astype(np.float32)
 
         # Ejecutar inferencia con el modelo de emociones
