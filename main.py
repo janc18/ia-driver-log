@@ -3,9 +3,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 import openvino as ov
+import socket
+import requests
 
 # Fetch `notebook_utils` module
-import requests
 r = requests.get(
     url="https://raw.githubusercontent.com/openvinotoolkit/openvino_notebooks/latest/utils/notebook_utils.py",
 )
@@ -52,6 +53,10 @@ emotion_lock = False
 emotion_lock_start_time = 0
 prediccion = "Desconocido"
 
+# Obtener información del dispositivo
+hostname = socket.gethostname()
+ip_address = socket.gethostbyname(hostname)
+
 # --- Captura de video en tiempo real desde la cámara ---
 cap = cv2.VideoCapture(0)  # Usamos la cámara (dispositivo 0)
 
@@ -76,11 +81,25 @@ while True:
     for (x, y, w, h) in faces:
         roi_gray = gray_frame[y:y+h, x:x+w]
         roi_color = frame[y:y+h, x:x+w]
-        eyes = eye_cascade.detectMultiScale(roi_gray)
-        
+        eyes = eye_cascade.detectMultiScale(roi_gray, scaleFactor=1.1, minNeighbors=10, minSize=(30, 30))
+
+        # Filtrar detecciones de ojos pequeñas
+        min_eye_size = 20
+        eyes = [eye for eye in eyes if eye[2] > min_eye_size and eye[3] > min_eye_size]
+
+        # Dibujar rectángulo alrededor del rostro
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+        # Mostrar coordenadas del rostro
+        cv2.putText(frame, f"Face: ({x}, {y})", (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+
         # Si detectamos ojos, actualizamos el conteo
         if len(eyes) > 0:
             eyes_detected = len(eyes)
+            for (ex, ey, ew, eh) in eyes:
+                # Dibujar rectángulo alrededor de los ojos
+                cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (0, 255, 0), 2)
+                # Mostrar coordenadas de los ojos
+                cv2.putText(frame, f"Eye: ({x+ex}, {y+ey})", (x+ex, y+ey-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
 
     # Si no se detectan ojos y un rostro está presente, sumamos al contador
     if len(faces) > 0 and eyes_detected == 0:
@@ -96,7 +115,7 @@ while True:
         start_time = time.time()
 
     # Mostrar el flujo de video en una ventana
-    cv2.putText(frame, f"Ojos cerrados: {eye_closure_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+    cv2.putText(frame, f"Ojos cerrados: {eye_closure_count}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
 
     # Si no hay bloqueo de emoción, detectamos emociones
     if not emotion_lock:
@@ -124,13 +143,16 @@ while True:
             prediccion = emotions[emotion_index]
 
     # Si la emoción está bloqueada por "adormilado", la mantenemos durante 1 minuto
-    if emotion_lock and time.time() - emotion_lock_start_time >= 60:
+    if emotion_lock and time.time() - emotion_lock_start_time >= 60:    
         emotion_lock = False  # Desbloqueamos la emoción después de 1 minuto
 
     # Mostrar la predicción en el cuadro de la cámara en vivo
-    cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+    cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2, cv2.LINE_AA)
 
-    # Mostrar el flujo de video con la predicción superpuesta
+    # Mostrar información del dispositivo
+    cv2.putText(frame, f"Dispositivo: {hostname} ({ip_address})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Mostrar el flujo de video con la predicción y la información del dispositivo superpuestos
     cv2.imshow('Camara en vivo - Emocion detectada', frame)
 
     # Romper el loop si se presiona la tecla 'q'
@@ -139,4 +161,4 @@ while True:
 
 # Liberar la cámara y cerrar las ventanas
 cap.release()
-cv2.destroyAllWindows()
+cv2.destroyAllWindows() 
