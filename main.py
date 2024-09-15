@@ -47,7 +47,7 @@ if not cap.isOpened():
     print("No se pudo abrir la cámara")
     exit()
 
-# Mostrar el flujo de video en tiempo real y capturar una imagen cada 3 segundos
+# Variable para capturar el tiempo de la última predicción
 last_capture_time = time.time()
 
 while True:
@@ -57,10 +57,7 @@ while True:
         print("No se pudo capturar la imagen")
         break
 
-    # Mostrar el flujo de video en una ventana
-    cv2.imshow('Camara en vivo', frame)
-
-    # Capturar y procesar cada 3 segundos
+    # Preprocesar la imagen capturada cada 3 segundos
     current_time = time.time()
     if current_time - last_capture_time >= 3:
         last_capture_time = current_time
@@ -83,13 +80,12 @@ while True:
         # Obtener la emoción con mayor probabilidad
         emotion_index = np.argmax(result_infer)
         prediccion = emotions[emotion_index]
-        
-        # Mostrar la clase predicha
-        print(f"Emoción detectada: {prediccion}")
 
-        # Mostrar la imagen y la predicción en una ventana separada
-        cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        cv2.imshow('Imagen capturada', frame)
+    # Mostrar la clase predicha en la cámara en vivo
+    cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+
+    # Mostrar el flujo de video en una ventana
+    cv2.imshow('Camara en vivo - Emocion detectada', frame)
 
     # Romper el loop si se presiona la tecla 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
