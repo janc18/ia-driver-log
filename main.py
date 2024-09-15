@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,31 +35,54 @@ model = core.read_model(model=model_xml_path)
 compiled_model = core.compile_model(model=model, device_name="CPU")
 
 output_layer = compiled_model.output(0)
-# Download the image from the openvino_notebooks storage
-image_filename = download_file(
-    "https://storage.openvinotoolkit.org/repositories/openvino_notebooks/data/data/image/coco.jpg",
-    directory="data",
-)
 
-# The MobileNet model expects images in RGB format.
-image = cv2.cvtColor(cv2.imread(filename=str(image_filename)), code=cv2.COLOR_BGR2RGB)
+# --- Captura de imagen desde la cámara ---
+cap = cv2.VideoCapture(0)  # Captura de video desde la cámara (dispositivo 0)
 
-# Resize to MobileNet image shape.
+if not cap.isOpened():
+    print("No se pudo abrir la cámara")
+    exit()
+
+# Tomar una foto
+ret, frame = cap.read()
+if not ret:
+    print("No se pudo capturar la imagen")
+    cap.release()
+    exit()
+
+# Mostrar la imagen capturada
+plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+plt.title("Imagen capturada")
+plt.show()
+
+# Cerrar la cámara
+cap.release()
+
+# Preprocesamiento de la imagen
+# Convertir a RGB si es necesario
+image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+# Redimensionar la imagen a las dimensiones requeridas por MobileNet (224x224)
 input_image = cv2.resize(src=image, dsize=(224, 224))
 
-# Reshape to model input shape.
+# Expandir la forma de la imagen para que coincida con la entrada del modelo
 input_image = np.expand_dims(input_image, 0)
-plt.imshow(image)
+
+# Ejecutar la inferencia con el modelo
 result_infer = compiled_model([input_image])[output_layer]
+
+# Obtener el índice de la clase con mayor probabilidad
 result_index = np.argmax(result_infer)
+
+# Descargar el archivo de clases de ImageNet
 imagenet_filename = download_file(
     "https://storage.openvinotoolkit.org/repositories/openvino_notebooks/data/data/datasets/imagenet/imagenet_2012.txt",
     directory="data",
 )
-imagenet_classes = imagenet_filename.read_text().splitlines()
-# The model description states that for this model, class 0 is a background.
-# Therefore, a background must be added at the beginning of imagenet_classes.
-imagenet_classes = ["background"] + imagenet_classes
 
-imagenet_classes[result_index]
-print(imagenet_classes[result_index])
+# Leer las clases de ImageNet
+imagenet_classes = imagenet_filename.read_text().splitlines()
+imagenet_classes = ["background"] + imagenet_classes  # Agregar "background" como la clase 0
+
+# Mostrar la clase predicha
+print(f"Clase predicha: {imagenet_classes[result_index]}")
