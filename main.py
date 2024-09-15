@@ -5,12 +5,12 @@ import numpy as np
 import openvino as ov
 import socket
 import requests
+import random
 
 # Fetch `notebook_utils` module
 r = requests.get(
     url="https://raw.githubusercontent.com/openvinotoolkit/openvino_notebooks/latest/utils/notebook_utils.py",
 )
-
 open("notebook_utils.py", "w").write(r.text)
 
 from notebook_utils import download_file, device_widget
@@ -57,15 +57,20 @@ prediccion = "Desconocido"
 hostname = socket.gethostname()
 ip_address = socket.gethostbyname(hostname)
 
+# --- Variables para controlar la actualización de la velocidad ---
+velocidad = random.uniform(10, 100)  # Inicializamos la velocidad
+last_speed_update_time = time.time()  # Guardamos el tiempo de la última actualización
+update_interval = 1  # Intervalo de actualización en segundos
+
 # --- Captura de video en tiempo real desde la cámara ---
-cap = cv2.VideoCapture(0)  # Usamos la cámara (dispositivo 0)
+cap = cv2.VideoCapture("./video.mp4")  # Usamos un archivo de video o la cámara (cambiar a 0 para cámara)
 
 if not cap.isOpened():
-    print("No se pudo abrir la cámara")
+    print("No se pudo abrir la cámara o el archivo de video")
     exit()
 
 while True:
-    # Leer un frame de la cámara
+    # Leer un frame de la cámara o video
     ret, frame = cap.read()
     if not ret:
         print("No se pudo capturar la imagen")
@@ -89,68 +94,34 @@ while True:
 
         # Dibujar rectángulo alrededor del rostro
         cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
-        # Mostrar coordenadas del rostro
-        cv2.putText(frame, f"Face: ({x}, {y})", (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
 
         # Si detectamos ojos, actualizamos el conteo
         if len(eyes) > 0:
             eyes_detected = len(eyes)
             for (ex, ey, ew, eh) in eyes:
-                # Dibujar rectángulo alrededor de los ojos
                 cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (0, 255, 0), 2)
-                # Mostrar coordenadas de los ojos
-                cv2.putText(frame, f"Eye: ({x+ex}, {y+ey})", (x+ex, y+ey-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
 
     # Si no se detectan ojos y un rostro está presente, sumamos al contador
     if len(faces) > 0 and eyes_detected == 0:
         eye_closure_count += 1
 
-    # Si pasan 60 segundos, reseteamos el contador de cierres de ojos
-    if time.time() - start_time >= 60:
-        if eye_closure_count > 5:
-            prediccion = "adormilado"
-            emotion_lock = True
-            emotion_lock_start_time = time.time()
-        eye_closure_count = 0
-        start_time = time.time()
+    # Verificar si ha pasado suficiente tiempo para actualizar la velocidad
+    current_time = time.time()
+    if current_time - last_speed_update_time >= update_interval:
+        velocidad = random.uniform(90, 100)  # Actualizar la velocidad aleatoria
+        last_speed_update_time = current_time  # Actualizar el tiempo de la última actualización
 
     # Mostrar el flujo de video en una ventana
-    cv2.putText(frame, f"Ojos cerrados: {eye_closure_count}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
 
-    # Si no hay bloqueo de emoción, detectamos emociones
-    if not emotion_lock:
-        # Capturar y procesar cada 3 segundos
-        current_time = time.time()
-        if current_time - last_capture_time >= 3:
-            last_capture_time = current_time
+    cv2.putText(frame, f"Velocidad: {velocidad:.2f} km/h", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
 
-            # Preprocesar la imagen capturada
-            input_image = cv2.resize(src=gray_frame, dsize=(64, 64))  # Tamaño requerido por el modelo de emociones
-
-            # Repetimos el canal para que sea de 3 canales (RGB falso)
-            input_image = np.stack([input_image] * 3, axis=-1)  # Forma (64, 64, 3)
-
-            # Cambiamos la forma a la que espera el modelo: (1, 3, 64, 64)
-            input_image = np.transpose(input_image, (2, 0, 1))  # De (64, 64, 3) a (3, 64, 64)
-            input_image = np.expand_dims(input_image, 0)  # De (3, 64, 64) a (1, 3, 64, 64)
-            input_image = input_image.astype(np.float32)
-
-            # Ejecutar inferencia con el modelo de emociones
-            result_infer = compiled_model([input_image])[output_layer]
-
-            # Obtener la emoción con mayor probabilidad
-            emotion_index = np.argmax(result_infer)
-            prediccion = emotions[emotion_index]
-
-    # Si la emoción está bloqueada por "adormilado", la mantenemos durante 1 minuto
-    if emotion_lock and time.time() - emotion_lock_start_time >= 60:    
-        emotion_lock = False  # Desbloqueamos la emoción después de 1 minuto
-
-    # Mostrar la predicción en el cuadro de la cámara en vivo
+    # Mostrar la predicción de emoción
     cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2, cv2.LINE_AA)
 
+    cv2.putText(frame, f"Distraccion: {eye_closure_count}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+
     # Mostrar información del dispositivo
-    cv2.putText(frame, f"Dispositivo: {hostname} ({ip_address})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"Dispositivo: {hostname} ({ip_address})", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
     # Mostrar el flujo de video con la predicción y la información del dispositivo superpuestos
     cv2.imshow('Camara en vivo - Emocion detectada', frame)
@@ -161,4 +132,4 @@ while True:
 
 # Liberar la cámara y cerrar las ventanas
 cap.release()
-cv2.destroyAllWindows() 
+cv2.destroyAllWindows()
