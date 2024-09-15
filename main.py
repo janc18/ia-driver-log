@@ -11,7 +11,7 @@ r = requests.get(
 )
 open("notebook_utils.py", "w").write(r.text)
 
-from notebook_utils import download_file, device_widget
+from notebook_utils import download_file
 
 base_artifacts_dir = Path("./artifacts").expanduser()
 
@@ -52,6 +52,46 @@ emotion_lock = False
 emotion_lock_start_time = 0
 prediccion = "Desconocido"
 
+# --- Modelos de detección de objetos ---
+object_model_name = "mobilenet-ssd"
+object_model_xml_name = f"{object_model_name}.xml"
+object_model_bin_name = f"{object_model_name}.bin"
+
+object_model_xml_path = base_artifacts_dir / object_model_xml_name
+
+object_base_url = "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/1/mobilenet-ssd/FP32/"
+
+if not object_model_xml_path.exists():
+    download_file(object_base_url + object_model_xml_name, object_model_xml_name, base_artifacts_dir)
+    download_file(object_base_url + object_model_bin_name, object_model_bin_name, base_artifacts_dir)
+else:
+    print(f"{object_model_name} ya descargado en {base_artifacts_dir}")
+
+# Cargar el modelo de detección de objetos
+object_model = core.read_model(model=object_model_xml_path)
+compiled_object_model = core.compile_model(model=object_model, device_name="CPU")
+
+object_output_layer = compiled_object_model.output(0)
+
+# Definir las clases de objetos para MobileNet SSD
+object_classes = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+
+# Función para detectar objetos
+def detect_objects(frame):
+    h, w = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), (0, 0, 0), swapRB=True, crop=False)
+    compiled_object_model.set_input(blob)
+    detections = compiled_object_model.output()
+    
+    detected_objects = []
+    for detection in detections[0, 0]:
+        score = detection[2]
+        if score > 0.5:  # Umbral de confianza
+            class_id = int(detection[1])
+            if class_id in [1, 8, 14]:  # IDs para televisión, laptop y celular
+                detected_objects.append(object_classes[class_id])
+    return detected_objects
+
 # --- Captura de video en tiempo real desde la cámara ---
 cap = cv2.VideoCapture(0)  # Usamos la cámara (dispositivo 0)
 
@@ -77,16 +117,15 @@ while True:
         roi_gray = gray_frame[y:y+h, x:x+w]
         roi_color = frame[y:y+h, x:x+w]
         eyes = eye_cascade.detectMultiScale(roi_gray)
-        
-        # Si detectamos ojos, actualizamos el conteo
         if len(eyes) > 0:
             eyes_detected = len(eyes)
-
-    # Si no se detectan ojos y un rostro está presente, sumamos al contador
     if len(faces) > 0 and eyes_detected == 0:
         eye_closure_count += 1
 
-    # Si pasan 60 segundos, reseteamos el contador de cierres de ojos
+    # Detección de objetos
+    detected_objects = detect_objects(frame)
+
+    # Reseteo del contador de cierres de ojos y detección de emociones
     if time.time() - start_time >= 60:
         if eye_closure_count > 5:
             prediccion = "adormilado"
@@ -95,54 +134,20 @@ while True:
         eye_closure_count = 0
         start_time = time.time()
 
-    # Mostrar el flujo de video en una ventana
+    # Mostrar la información en la ventana de video
     cv2.putText(frame, f"Ojos cerrados: {eye_closure_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
-    # Si no hay bloqueo de emoción, detectamos emociones
-    if not emotion_lock:
-        # Capturar y procesar cada 3 segundos
-        current_time = time.time()
-        if current_time - last_capture_time >= 3:
-            last_capture_time = current_time
-
-            # Preprocesar la imagen capturada
-            input_image = cv2.resize(src=gray_frame, dsize=(64, 64))  # Tamaño requerido por el modelo de emociones
-
-            # Repetimos el canal para que sea de 3 canales (RGB falso)
-            input_image = np.stack([input_image] * 3, axis=-1)  # Forma (64, 64, 3)
-
-            # Cambiamos la forma a la que espera el modelo: (1, 3, 64, 64)
-            input_image = np.transpose(input_image, (2, 0, 1))  # De (64, 64, 3) a (3, 64, 64)
-            input_image = np.expand_dims(input_image, 0)  # De (3, 64, 64) a (1, 3, 64, 64)
-            input_image = input_image.astype(np.float32)
-
-            # Ejecutar inferencia con el modelo de emociones
-            result_infer = compiled_model([input_image])[output_layer]
-
-            # Obtener la emoción con mayor probabilidad
-            emotion_index = np.argmax(result_infer)
-            prediccion = emotions[emotion_index]
-
-    # Si la emoción está bloqueada por "adormilado", la mantenemos durante 1 minuto
-    if emotion_lock and time.time() - emotion_lock_start_time >= 60:
-        emotion_lock = False  # Desbloqueamos la emoción después de 1 minuto
-
-    # Mostrar la predicción en el cuadro de la cámara en vivo
     cv2.putText(frame, f"Emocion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-
-    # Mostrar el flujo de video con la predicción superpuesta
-    cv2.imshow('Camara en vivo - Emocion detectada', frame)
+    cv2.putText(frame, f"Objetos detectados: {', '.join(detected_objects)}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
+    cv2.imshow('Camara en vivo - Emocion y objetos detectados', frame)
 
     # Enviar solicitud POST cada 30 segundos
     if time.time() - last_post_time >= 30:
         last_post_time = time.time()
-        
-        # Hacer el POST con los datos requeridos
         try:
             response = requests.post(
                 url="https://fridaplatform.com/generate",
                 json={
-                    "inputs": f"escribe un resumen de 150 palabras de diagnostico sobre un conductor en carretera segun el estado de animo '{prediccion}' y las veces que ha cerrado los ojos en 30 segundos ('{eye_closure_count}'). Ademas, has una muestra de que datos guardarias en una base de datos en mongo con la informacion dada.",
+                    "inputs": f"Escribe un resumen de 150 palabras de diagnóstico sobre un conductor en carretera según el estado de ánimo '{prediccion}', las veces que ha cerrado los ojos en 30 segundos ('{eye_closure_count}'), y los objetos detectados: {', '.join(detected_objects)}. Además, muestra qué datos guardarías en una base de datos en MongoDB con la información dada.",
                     "parameters": {"max_new_tokens": 250}
                 }
             )
@@ -150,10 +155,8 @@ while True:
         except Exception as e:
             print(f"Error en el POST: {e}")
 
-    # Romper el loop si se presiona la tecla 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Liberar la cámara y cerrar las ventanas
 cap.release()
 cv2.destroyAllWindows()
