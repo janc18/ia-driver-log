@@ -3,13 +3,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 import openvino as ov
+import requests
 
 # Fetch `notebook_utils` module
-import requests
 r = requests.get(
     url="https://raw.githubusercontent.com/openvinotoolkit/openvino_notebooks/latest/utils/notebook_utils.py",
 )
-
 open("notebook_utils.py", "w").write(r.text)
 
 from notebook_utils import download_file, device_widget
@@ -48,6 +47,7 @@ eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml
 eye_closure_count = 0
 start_time = time.time()
 last_capture_time = time.time()
+last_post_time = time.time()  # Control para el POST cada 30 segundos
 emotion_lock = False
 emotion_lock_start_time = 0
 prediccion = "Desconocido"
@@ -132,6 +132,23 @@ while True:
 
     # Mostrar el flujo de video con la predicción superpuesta
     cv2.imshow('Camara en vivo - Emocion detectada', frame)
+
+    # Enviar solicitud POST cada 30 segundos
+    if time.time() - last_post_time >= 30:
+        last_post_time = time.time()
+        
+        # Hacer el POST con los datos requeridos
+        try:
+            response = requests.post(
+                url="https://fridaplatform.com/generate",
+                json={
+                    "inputs": f"escribe un resumen de 150 palabras de diagnostico sobre un conductor en carretera segun el estado de animo '{prediccion}' y las veces que ha cerrado los ojos en 30 segundos ('{eye_closure_count}'). Ademas, has una muestra de que datos guardarias en una base de datos en mongo con la informacion dada.",
+                    "parameters": {"max_new_tokens": 250}
+                }
+            )
+            print("POST realizado con éxito, respuesta:", response.json())
+        except Exception as e:
+            print(f"Error en el POST: {e}")
 
     # Romper el loop si se presiona la tecla 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
