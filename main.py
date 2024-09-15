@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 import cv2
 import matplotlib.pyplot as plt
@@ -36,53 +37,61 @@ compiled_model = core.compile_model(model=model, device_name="CPU")
 
 output_layer = compiled_model.output(0)
 
-# --- Captura de imagen desde la cámara ---
-cap = cv2.VideoCapture(0)  # Captura de video desde la cámara (dispositivo 0)
-
-if not cap.isOpened():
-    print("No se pudo abrir la cámara")
-    exit()
-
-# Tomar una foto
-ret, frame = cap.read()
-if not ret:
-    print("No se pudo capturar la imagen")
-    cap.release()
-    exit()
-
-# Mostrar la imagen capturada
-plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-plt.title("Imagen capturada")
-plt.show()
-
-# Cerrar la cámara
-cap.release()
-
-# Preprocesamiento de la imagen
-# Convertir a RGB si es necesario
-image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-# Redimensionar la imagen a las dimensiones requeridas por MobileNet (224x224)
-input_image = cv2.resize(src=image, dsize=(224, 224))
-
-# Expandir la forma de la imagen para que coincida con la entrada del modelo
-input_image = np.expand_dims(input_image, 0)
-
-# Ejecutar la inferencia con el modelo
-result_infer = compiled_model([input_image])[output_layer]
-
-# Obtener el índice de la clase con mayor probabilidad
-result_index = np.argmax(result_infer)
-
 # Descargar el archivo de clases de ImageNet
 imagenet_filename = download_file(
     "https://storage.openvinotoolkit.org/repositories/openvino_notebooks/data/data/datasets/imagenet/imagenet_2012.txt",
     directory="data",
 )
 
-# Leer las clases de ImageNet
 imagenet_classes = imagenet_filename.read_text().splitlines()
 imagenet_classes = ["background"] + imagenet_classes  # Agregar "background" como la clase 0
 
-# Mostrar la clase predicha
-print(f"Clase predicha: {imagenet_classes[result_index]}")
+# --- Captura de video en tiempo real desde la cámara ---
+cap = cv2.VideoCapture(0)  # Usamos la cámara (dispositivo 0)
+
+if not cap.isOpened():
+    print("No se pudo abrir la cámara")
+    exit()
+
+# Mostrar el flujo de video en tiempo real y capturar una imagen cada 3 segundos
+last_capture_time = time.time()
+
+while True:
+    # Leer un frame de la cámara
+    ret, frame = cap.read()
+    if not ret:
+        print("No se pudo capturar la imagen")
+        break
+
+    # Mostrar el flujo de video en una ventana
+    cv2.imshow('Camara en vivo', frame)
+
+    # Capturar y procesar cada 3 segundos
+    current_time = time.time()
+    if current_time - last_capture_time >= 3:
+        last_capture_time = current_time
+        
+        # Preprocesar la imagen capturada
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        input_image = cv2.resize(src=image, dsize=(224, 224))
+        input_image = np.expand_dims(input_image, 0)
+
+        # Ejecutar inferencia con el modelo
+        result_infer = compiled_model([input_image])[output_layer]
+        result_index = np.argmax(result_infer)
+
+        # Mostrar la clase predicha
+        prediccion = imagenet_classes[result_index]
+        print(f"Clase predicha: {prediccion}")
+
+        # Mostrar la imagen y la predicción en una ventana separada
+        cv2.putText(frame, f"Prediccion: {prediccion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+        cv2.imshow('Imagen capturada', frame)
+
+    # Romper el loop si se presiona la tecla 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Liberar la cámara y cerrar las ventanas
+cap.release()
+cv2.destroyAllWindows()
